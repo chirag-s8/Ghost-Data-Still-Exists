@@ -62,6 +62,53 @@ Only `deletion_requests.csv` requires answers. The other files provide evidence 
 
 ---
 
+## Solution — Setup And Run
+
+The solution is a deterministic, rule-based Python pipeline (no LLM API, no
+keys required, fully offline and reproducible).
+
+### Architecture
+
+| Module | Role |
+| --- | --- |
+| `code/intent.py` | Multilingual rule-based classification of `request_text`; non-deletion requests (export, access, opt-out, correction, password reset) become `NOT_APPLICABLE` |
+| `code/identity.py` | Resolves the request email to current + historical identifiers from `user_identities.csv` and `user_audit_log.csv` |
+| `code/loader.py` | Loads requests, identities, audit history, activity stream, deletion rules, evidence manifest |
+| `code/evidence_index.py` | Parses every participant-visible evidence file (snapshot bundles, readback exports, SQLite-compatible SQL replicas, structured service logs, lookup traces, connector configs, export jobs, audit ledgers) into subject/resource/time-keyed records, including pre-deletion snapshots that provide the email ↔ resource-id linkage |
+| `code/policy.py` | Applies `deletion_rules.csv`: DELETE / REDACT / ANONYMIZE / RETAIN / TOMBSTONE per data category |
+| `code/investigator.py` | Per case: temporal filtering to `audit_at`, account-resource discovery and state determination, evidence-backed status decision (workflow claims are never trusted alone) |
+| `code/planner.py` | Emits FINDING → REMEDIATION → VERIFICATION steps in the fixed operation order with correct `evidence_id` usage |
+| `code/validator.py` | Schema/row-count/JSON validation of the output |
+| `recon/eval_metrics.py` | Reproduces the accuracy metrics and the three participant-authored custom evaluation cases |
+
+### Setup
+
+```bash
+# any Python 3.10+; no third-party packages are required
+pip install -r requirements.txt   # (empty/optional — stdlib only)
+```
+
+### Run
+
+```bash
+# Full run: writes the submission file at the repository root
+python code/main.py
+
+# Sample mode: runs the 32 public sample cases and prints accuracy vs sample_output.csv
+python code/main.py --sample
+
+# Evaluation metrics + custom evaluation cases
+python recon/eval_metrics.py
+```
+
+A clean full run processes all 518 cases in under a second and passes the
+built-in validator (exactly one row per `case_id`, sorted by `case_id`,
+consecutive step numbers, valid JSON arrays). Evaluation reports are in
+`evaluation/evaluation_report.md` and `evaluation/usage_report.md`
+(mirrored under `code/evaluation/`).
+
+---
+
 ## Output
 
 Create `output.csv` with these columns in this exact order:
